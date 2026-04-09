@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     // Send OTP via SMS Mobile API
     const apiKey = Deno.env.get("SMS_MOBILE_API_KEY")!;
     const smsResponse = await fetch(
-      `https://api.smsmobileapi.com/sendsms?apikey=${apiKey}&waession_id=none&recipients=${encodeURIComponent(phone)}&message=${encodeURIComponent(`Your VaaniPay OTP is ${otp}. Valid for 5 minutes.`)}`
+      `https://api.smsmobileapi.com/sendsms?apikey=${apiKey}&recipients=${encodeURIComponent(phone)}&message=${encodeURIComponent(`Your VaaniPay OTP is ${otp}. Valid for 5 minutes.`)}`
     );
 
     const smsResult = await smsResponse.text();
