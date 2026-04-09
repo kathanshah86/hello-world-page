@@ -23,7 +23,11 @@ const Auth = () => {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      toast.success("OTP sent to your mobile number!");
+      if (data?.otp) {
+        toast.success(`SMS failed. Your OTP is: ${data.otp}`, { duration: 30000 });
+      } else {
+        toast.success("OTP sent to your mobile number!");
+      }
       setStep("otp");
     } catch (err: any) {
       toast.error(err.message || "Failed to send OTP");

@@ -49,13 +49,31 @@ Deno.serve(async (req) => {
     // Send OTP via SMS Mobile API
     const apiKey = Deno.env.get("SMS_MOBILE_API_KEY")!;
     const smsResponse = await fetch(
-      `https://api.smsmobileapi.com/sendsms?apikey=${apiKey}&waession_id=none&recipients=${encodeURIComponent(phone)}&message=${encodeURIComponent(`Your VaaniPay OTP is ${otp}. Valid for 5 minutes.`)}`
+      `https://api.smsmobileapi.com/sendsms?apikey=${apiKey}&recipients=${encodeURIComponent(phone)}&message=${encodeURIComponent(`Your VaaniPay OTP is ${otp}. Valid for 5 minutes.`)}`
     );
 
     const smsResult = await smsResponse.text();
     console.log("SMS API response:", smsResult);
 
-    return new Response(JSON.stringify({ success: true, message: "OTP sent successfully" }), {
+    // Check if SMS was sent successfully
+    let smsSent = true;
+    try {
+      const smsJson = JSON.parse(smsResult);
+      if (smsJson?.result?.sent === "api_error" || smsJson?.result?.error) {
+        console.warn("SMS send failed, returning OTP in response for testing:", smsResult);
+        smsSent = false;
+      }
+    } catch (_) {
+      // If response isn't JSON, continue
+    }
+
+    // If SMS failed, return OTP in response for testing purposes
+    // TODO: Remove otp from response once SMS service is properly configured
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: smsSent ? "OTP sent successfully" : "SMS delivery failed. Use the OTP shown below.",
+      ...(smsSent ? {} : { otp })
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
