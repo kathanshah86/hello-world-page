@@ -12,6 +12,7 @@ Deno.serve(async (req) => {
 
   try {
     const { phone, otp } = await req.json();
+    console.log("Verify request for phone:", phone, "otp:", otp);
 
     if (!phone || !otp) {
       return new Response(JSON.stringify({ error: "Phone and OTP are required" }), {
@@ -25,20 +26,43 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Find the OTP
-    const { data: otpRecord, error } = await supabase
+    // First check all OTPs for this phone for debugging
+    const { data: allOtps } = await supabase
+      .from("otp_codes")
+      .select("*")
+      .eq("phone", phone)
+      .order("created_at", { ascending: false });
+    
+    console.log("All OTPs for phone:", JSON.stringify(allOtps));
+
+    // Find matching OTP - don't filter by expiry in query, check manually
+    const { data: otpRecords, error } = await supabase
       .from("otp_codes")
       .select("*")
       .eq("phone", phone)
       .eq("otp_code", otp)
       .eq("verified", false)
-      .gte("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
+
+    console.log("Matching OTPs:", JSON.stringify(otpRecords), "error:", error);
+
+    const otpRecord = otpRecords?.[0];
 
     if (error || !otpRecord) {
       return new Response(JSON.stringify({ error: "Invalid or expired OTP" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check expiry manually
+    const expiresAt = new Date(otpRecord.expires_at);
+    const now = new Date();
+    console.log("Expires at:", expiresAt.toISOString(), "Now:", now.toISOString());
+
+    if (expiresAt < now) {
+      return new Response(JSON.stringify({ error: "OTP has expired. Please request a new one." }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -50,35 +74,23 @@ Deno.serve(async (req) => {
     // Check if user exists in auth, if not create one
     const email = `${phone.replace("+", "")}@phone.vaanipay.app`;
     
-    // Try to find existing user
-    const { data: existingUsers } = await supabase.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(u => u.email === email);
+    const { data: { users: existingUsers } } = await supabase.auth.admin.listUsers();
+    const existingUser = existingUsers?.find(u => u.email === email);
 
     let session = null;
     
     if (existingUser) {
-      // Generate a session for existing user
-      const { data, error: signInError } = await supabase.auth.admin.generateLink({
-        type: "magiclink",
-        email,
-      });
-      
-      if (signInError) {
-        console.error("Sign in error:", signInError);
-      }
-
-      // Sign in with password (we set a deterministic password based on phone)
       const { data: signInData, error: pwError } = await supabase.auth.signInWithPassword({
         email,
         password: `vp_${phone}_secure`,
       });
       
+      console.log("Sign in result:", pwError ? pwError.message : "success");
       if (!pwError) {
         session = signInData.session;
       }
     } else {
-      // Create new user
-      const { data: signUpData, error: signUpError } = await supabase.auth.admin.createUser({
+      const { error: signUpError } = await supabase.auth.admin.createUser({
         email,
         password: `vp_${phone}_secure`,
         email_confirm: true,
@@ -93,7 +105,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Sign in the new user
       const { data: signInData } = await supabase.auth.signInWithPassword({
         email,
         password: `vp_${phone}_secure`,
