@@ -55,6 +55,20 @@ Deno.serve(async (req) => {
     const smsResult = await smsResponse.text();
     console.log("SMS API response:", smsResult);
 
+    // Check if SMS was sent successfully
+    try {
+      const smsJson = JSON.parse(smsResult);
+      if (smsJson?.result?.sent === "api_error" || smsJson?.result?.error) {
+        console.error("SMS send failed:", smsResult);
+        return new Response(JSON.stringify({ error: "Failed to send SMS. Please try again." }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } catch (_) {
+      // If response isn't JSON, continue
+    }
+
     return new Response(JSON.stringify({ success: true, message: "OTP sent successfully" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
